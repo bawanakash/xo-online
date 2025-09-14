@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Grand Online XO Game</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      text-align: center;
+      margin: 0; padding: 30px;
+    }
+    h1 {
+      text-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
+      font-size: 3rem;
+    }
+    #login input, #login button {
+      font-size: 1.1rem;
+      padding: 10px 20px;
+      border-radius: 8px;
+      border: none;
+      margin: 10px 5px;
+      cursor: pointer;
+      outline: none;
+      transition: background-color 0.3s ease;
+    }
+    #login button {
+      background-color: #6f42c1;
+      color: white;
+    }
+    #login button:hover {
+      background-color: #a177e0;
+    }
+    #login input {
+      max-width: 180px;
+      border: 2px solid #6f42c1;
+      background: transparent;
+      color: white;
+      text-align: center;
+    }
+    #login input::placeholder {
+      color: #e0e0e0;
+    }
+    #status {
+      font-size: 1.3rem;
+      margin-top: 15px;
+      text-shadow: 0 0 5px black;
+      min-height: 2em;
+    }
+    #board {
+      margin: 30px auto 0;
+      display: grid;
+      grid-template-columns: repeat(3, 120px);
+      gap: 15px;
+      background: rgba(255, 255, 255, 0.15);
+      padding: 15px;
+      border-radius: 20px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+      width: max-content;
+    }
+    .cell {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-weight: bold;
+      font-size: 4rem;
+      color: #fff;
+      background: rgba(0,0,0,0.3);
+      border-radius: 12px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.3s ease, transform 0.15s ease;
+      width: 120px;
+      height: 120px;
+    }
+    .cell:hover {
+      background: rgba(255,255,255,0.3);
+      transform: scale(1.1);
+    }
+    #resetBtn {
+      font-size: 1.1rem;
+      margin-top: 20px;
+      padding: 10px 30px;
+      border-radius: 10px;
+      border: none;
+      background-color: #6f42c1;
+      color: white;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+      box-shadow: 0 5px 10px rgba(111,66,193,0.5);
+    }
+    #resetBtn:hover {
+      background-color: #a177e0;
+      box-shadow: 0 8px 15px rgba(161,119,224,0.7);
+    }
+    @media (max-width: 480px) {
+      #board {
+        grid-template-columns: repeat(3, 80px);
+        gap: 10px;
+        padding: 10px;
+      }
+      .cell {
+        font-size: 2.5rem;
+        width: 80px;
+        height: 80px;
+      }
+      #resetBtn {
+        padding: 8px 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Grand Online XO Game</h1>
+
+  <div id="login">
+    <input id="nameInput" type="text" placeholder="Enter your name" />
+    <input id="roomInput" type="text" placeholder="Enter room code" />
+    <button id="joinBtn">Join Game</button>
+  </div>
+
+  <div id="status"></div>
+
+  <div id="game" style="display:none;">
+    <div id="board"></div>
+    <button id="resetBtn">Reset Game</button>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAxRqaApSzV8MtWPChag216vUTdCMVGoWo",
+      authDomain: "xo-online-e4066.firebaseapp.com",
+      projectId: "xo-online-e4066",
+      storageBucket: "xo-online-e4066.appspot.com",
+      messagingSenderId: "58053810552",
+      appId: "1:58053810552:web:2ff5a264ff8401eab8158d",
+      measurementId: "G-CX9PK6CYN8"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const nameInput = document.getElementById('nameInput');
+    const roomInput = document.getElementById('roomInput');
+    const joinBtn = document.getElementById('joinBtn');
+    const boardDiv = document.getElementById('board');
+    const statusDiv = document.getElementById('status');
+    const gameDiv = document.getElementById('game');
+    const loginDiv = document.getElementById('login');
+    const resetBtn = document.getElementById('resetBtn');
+
+    let playerName, roomCode, playerSymbol = null, currentTurn = 'X';
+
+    // Create board cells
+    for(let i = 0; i < 9; i++) {
+      const cell = document.createElement('div');
+      cell.classList.add('cell');
+      cell.dataset.index = i;
+      boardDiv.appendChild(cell);
+    }
+
+    // Handle cell click
+    boardDiv.addEventListener('click', (e) => {
+      if (!playerSymbol) return;
+      if (e.target.classList.contains('cell') && e.target.textContent === '') {
+        if (currentTurn !== playerSymbol) {
+          alert('Not your turn!');
+          return;
+        }
+        const index = e.target.dataset.index;
+        makeMove(index);
+      }
+    });
+
+    // Join game button click
+    joinBtn.onclick = async () => {
+      playerName = nameInput.value.trim();
+      roomCode = roomInput.value.trim();
+      if (!playerName || !roomCode) {
+        alert('Please enter your name and room code');
+        return;
+      }
+      loginDiv.style.display = 'none';
+      gameDiv.style.display = 'block';
+      statusDiv.style.display = 'block';
+
+      const playersRef = ref(db, `rooms/${roomCode}/players`);
+      const playersSnapshot = await playersRef.get();
+      let players = playersSnapshot.exists() ? playersSnapshot.val() : {};
+
+      if (!players.X) {
+        playerSymbol = 'X';
+        players.X = playerName;
+      } else if (!players.O) {
+        playerSymbol = 'O';
+        players.O = playerName;
+      } else {
+        playerSymbol = null; // spectator
+        alert('Room full, you are a spectator');
+      }
+      await set(playersRef, players);
+      statusDiv.textContent = `You are player ${playerSymbol || 'Spectator'} (${playerName})`;
+
+      listenGame();
+    };
+
+    // Make move and update Firebase
+    async function makeMove(index) {
+      const boardRef = ref(db, `rooms/${roomCode}/board`);
+      const turnRef = ref(db, `rooms/${roomCode}/turn`);
+      const boardSnapshot = await boardRef.get();
+      let board = boardSnapshot.exists() ? boardSnapshot.val() : Array(9).fill('');
+
+      if (board[index] === '') {
+        board[index] = playerSymbol;
+        await set(boardRef, board);
+        await set(turnRef, playerSymbol === 'X' ? 'O' : 'X');
+      }
+    }
+
+    // Listen for real-time updates
+    function listenGame() {
+      const boardRef = ref(db, `rooms/${roomCode}/board`);
+      const turnRef = ref(db, `rooms/${roomCode}/turn`);
+      set(ref(db, `rooms/${roomCode}`), {
+        board: Array(9).fill(''),
+        turn: 'X',
+        players: {}
+      }, { onlyIfEmpty: true }).catch(() => {});
+
+      onValue(boardRef, (snapshot) => {
+        const board = snapshot.val() || Array(9).fill('');
+        for(let i = 0; i < 9; i++) {
+          boardDiv.children[i].textContent = board[i];
+        }
+        checkWinner(board);
+      });
+
+      onValue(turnRef, (snapshot) => {
+        currentTurn = snapshot.val() || 'X';
+        if (playerSymbol) {
+          statusDiv.textContent = currentTurn === playerSymbol ? "Your turn" : `Waiting for ${currentTurn}`;
+        } else {
+          statusDiv.textContent = `Watching the game, current turn: ${currentTurn}`;
+        }
+      });
+    }
+
+    // Reset board button
+    resetBtn.onclick = () => {
+      set(ref(db, `rooms/${roomCode}`), {
+        board: Array(9).fill(''),
+        turn: 'X',
+        players: {}
+      });
+    };
+
+    // Check for winner or draw
+    function checkWinner(board) {
+      const winPatterns = [
+        [0,1,2],[3,4,5],[6,7,8],
+        [0,3,6],[1,4,7],[2,5,8],
+        [0,4,8],[2,4,6]
+      ];
+      for(const [a,b,c] of winPatterns) {
+        if(board[a] && board[a] === board[b] && board[a] === board[c]) {
+          alert(`Player ${board[a]} wins!`);
+          resetBtn.click();
+          return;
+        }
+      }
+      if(board.every(cell => cell !== '')) {
+        alert("It's a draw!");
+        resetBtn.click();
+      }
+    }
+  </script>
+</body>
+</html>
